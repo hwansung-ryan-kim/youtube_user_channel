@@ -1,64 +1,59 @@
 const express = require('express')
 const router = express.Router()
+const conn = require('../mariadb') //mariadb.js 안에 connection 모듈을 가져옴 
+
 
 let db = new Map() 
 var id = 1 // 하나의 객체를 primary key 용도로 사용 
 
-//route로 만들기 
 
-router
-    .route('/')  // app.js에 "/channels"를 빼놨다.
-    // 채널 전체 조회
-    .get((req,res) => { 
-        var {userId} = req.body 
-        var channels = []    // json 형태는 [{}, {}, {}]] 형식으로!
-
-        if(db.size && userId) {
-                 db.forEach(function(value, key) {  
-                  if (value.userId === userId) {    // channels가 배열인데, db의 key가 1부터 시작되므로 수정되어야 한다! 
-                    channels.push(value)
-                        }
-                    })
-
-                    if (channels.length) {
-                        res.status(200).json(channels)
-                    } else {
-                        notFoundChannel(res)
-                    }
-            } else {
-                notFoundChannel(res)
-            }
-        })
-            // 예외 처리 2가지
-            // 1) user Id가 body에 없으면 => my page를 통해서 들어오기 때문에 그럴 일은 없지만
-            // 예외적으로 로그인이 풀린 상태에서 해당 URL로 들어가게 되면 body가 없는 상태가 된다. 
-            // => 로그인 페이지로 이동!
-
-            // 2) user Id가 가진 채널이 없으면 
-            // 마찬가지로 로그인 페이지로 이동! 
-
-
+//데이터가 없을 때 
 function notFoundChannel(res) {
     res.status(404).json({
         message : `등록된 채널이 없습니다. `})
 }
 
 
+//route로 만들기 
+router.route('/')
+    // Retrieve all channels
+    .get((req, res) => {
+        const { userId } = req.body;
 
+        let sql = `SELECT * FROM channels WHERE id = ?`;
+        if (userId) {
+            conn.query(sql, userId, (err, results) => {
+                if (results.length) {
+                    res.status(200).json(results);
+                } else {
+                    res.status(400).end(); // Redirects here if userID is falsy during short-circuit evaluation
+                }
+            });
+        }
+    });
   
 
 
     // 채널 개별 생성  == db에 저장 
     router
-        .post((req,res) => { 
-        if (req.body.channelTitle){
-        let channel = req.body
+    .route('/') 
+    .post((req,res) => { 
 
-        db.set(id++, channel);
+        const {name, userId} = req.body 
 
-        res.status(201).json({
-            message : `${db.get(id-1).channelTitle}채널을 응원합니다!`
-        })
+        if (name && userId){
+        let channel = req.body // name, user_id
+
+        let sql = `INSERT INTO users (name, user_id)
+        VALUES (?, ?)`
+        let values = [name, userId]
+
+        conn.query(sql, values,
+        
+            function(err, results) { 
+                res.status(201).json(results)
+            }
+        )
 
     } else { 
         res.status(400).json({
@@ -70,22 +65,29 @@ function notFoundChannel(res) {
     })  
     
 
+
+// 채널 개별 조회 
 router
     .route('/:id')
-
     .get((req,res) => { 
        let {id} = req.params  // const는 상수이기 때문에 바꿀 수 없다.
        id = parseInt(id)
        
-       var channel = db.get(id)
-       if (channel === undefined) {
-           notFoundChannel(res)
-       } else { 
-            res.status(200).json(channel)
-       }
+       let sql =  `SELECT * FROM channels WHERE id = ?`
+       conn.query(sql, id,
+           function (err, results) {
+               if(results.length) {
+                    res.status(200).json (results)
+              } else { 
+                notFoundChannel(res)   
+           }
+           }
+       );
 
-    }) // 채널 개별 조회 
+    }) 
 
+
+    //채널 수정 
 
     .put((req,res) => { 
         let {id} = req.params  // const는 상수이기 때문에 바꿀 수 없다.
